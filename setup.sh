@@ -9,10 +9,28 @@ echo "--------------------------------------------------------------------------
 echo "                              SPOTIFY IMPORTER — SETUP"
 echo "----------------------------------------------------------------------------------------------------"
 
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "Error: python3 is not installed."
+    echo "Install Python 3.10+ and run setup again."
+    exit 1
+fi
+
+if ! python3 -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)"; then
+    echo "Error: Python 3.10+ is required."
+    echo "Current version: $(python3 --version 2>&1)"
+    exit 1
+fi
+
 # Create virtual environment if needed
 if [ ! -d ".venv" ]; then
     echo "Creating virtual environment..."
     python3 -m venv .venv
+fi
+
+if ! .venv/bin/python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)"; then
+    echo "Error: .venv was created with Python older than 3.10."
+    echo "Remove .venv and run setup again with Python 3.10+."
+    exit 1
 fi
 
 echo "Installing dependencies..."

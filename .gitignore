@@ -1,5 +1,30 @@
+# Local env files
 .env
+.env.*
+!.env.example
+
+# Virtual environments
+.venv/
+venv/
+
+# Python artifacts
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local caches and tooling state
 .cache
 .spotify_cache
+.claude/
+
+# Editor / OS files
+.DS_Store
+.vscode/
+.idea/
