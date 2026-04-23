@@ -1,4 +1,4 @@
 spotipy
-google-generativeai
+google-genai
 python-dotenv
 streamlit

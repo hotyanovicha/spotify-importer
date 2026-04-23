@@ -7,13 +7,12 @@ import os
 from typing import Optional, List, Tuple
 
 import spotipy
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 
 load_dotenv()
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
 
 SEPARATOR = "-" * 100
 
@@ -23,7 +22,14 @@ class SpotifyImporter:
     def __init__(self):
         self.sp = None
         self.current_user = None
-        self._gemini = genai.GenerativeModel(_GEMINI_MODEL)
+        self._gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+    def _generate_with_gemini(self, prompt: str) -> str:
+        response = self._gemini_client.models.generate_content(
+            model=_GEMINI_MODEL,
+            contents=prompt,
+        )
+        return (response.text or "").strip()
 
     def login(self):
         self.sp = spotipy.Spotify(
@@ -52,8 +58,7 @@ class SpotifyImporter:
             f"Lines:\n{numbered}"
         )
 
-        response = self._gemini.generate_content(prompt)
-        raw = response.text.strip()
+        raw = self._generate_with_gemini(prompt)
         raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.DOTALL).strip()
         data = json.loads(raw)
         return [{"artist": item["artist"], "song": item["song"]} for item in data]
@@ -78,8 +83,7 @@ class SpotifyImporter:
         )
 
         try:
-            response = self._gemini.generate_content(prompt)
-            raw = response.text.strip()
+            raw = self._generate_with_gemini(prompt)
             # strip possible markdown code fences
             raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.DOTALL).strip()
             data = json.loads(raw)
