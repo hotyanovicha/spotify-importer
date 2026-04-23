@@ -3,15 +3,16 @@
 import re
 import json
 import webbrowser
-
-import openai
-import spotipy
-from dotenv import load_dotenv
 import os
+
+import spotipy
+import google.generativeai as genai
+from dotenv import load_dotenv
 
 load_dotenv()
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
 SEPARATOR = "-" * 100
 _PLAYLIST_RE = re.compile(r"^\d+\.\s+(.+?)\s+[—–-]+\s+\*\*(.+?)\*\*", re.MULTILINE)
@@ -22,6 +23,7 @@ class SpotifyImporter:
     def __init__(self):
         self.sp = None
         self.current_user = None
+        self._gemini = genai.GenerativeModel(_GEMINI_MODEL)
 
     def login(self):
         self.sp = spotipy.Spotify(
@@ -55,25 +57,24 @@ class SpotifyImporter:
 
         candidates_text = "\n".join(lines)
         prompt = (
-            f"I'm looking for the song: {artist} — {song}\n\n"
-            f"Here are Spotify search results:\n{candidates_text}\n\n"
-            f'Which result is the correct match? Reply ONLY with JSON: {{"match": <index>}} or {{"match": null}} if none fit.'
+            f"I'm looking for the Spotify track: {artist} — {song}\n\n"
+            f"Search results:\n{candidates_text}\n\n"
+            f'Which result is the correct match? Reply ONLY with valid JSON: {{"match": <index>}} '
+            f'or {{"match": null}} if none are a good match. No explanation.'
         )
 
         try:
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=20,
-            )
-            raw = response["choices"][0]["message"]["content"].strip()
+            response = self._gemini.generate_content(prompt)
+            raw = response.text.strip()
+            # strip possible markdown code fences
+            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.DOTALL).strip()
             data = json.loads(raw)
             idx = data.get("match")
             if idx is None:
                 return None
             return candidates[int(idx)]
         except Exception as e:
-            print(f"  [!] OpenAI error, using first result: {e}")
+            print(f"  [!] Gemini error, using first result: {e}")
             return candidates[0]
 
     def import_tracks(self, tracks: list[dict], playlist_id: str) -> tuple[list, list]:
