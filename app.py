@@ -1,136 +1,129 @@
 #!/usr/bin/env python3
 
+import re
+
 import streamlit as st
+
 from importer import SpotifyImporter
 
-st.set_page_config(page_title="Spotify Playlist Importer", page_icon="🎵", layout="centered")
 
-st.title("🎵 Spotify Playlist Importer")
-st.caption("Вставь список треков в любом формате — AI сам разберёт артиста и название.")
+def extract_playlist_id(value: str) -> str | None:
+    text = value.strip()
+    if not text:
+        return None
 
-# ── Playlist text input ───────────────────────────────────────────────────────
+    if text.startswith("spotify:playlist:"):
+        parts = text.split(":")
+        return parts[-1] if parts[-1] else None
+
+    match = re.search(r"open\.spotify\.com/playlist/([A-Za-z0-9]+)", text)
+    if match:
+        return match.group(1)
+
+    if re.fullmatch(r"[A-Za-z0-9]+", text):
+        return text
+
+    return None
+
+
+st.set_page_config(page_title="Spotify Playlist Importer", layout="centered")
+
+st.title("Spotify Playlist Importer")
+st.write("Paste tracks line-by-line, choose destination, and import.")
 
 playlist_text = st.text_area(
-    "Треки (каждая строка = один трек):",
-    height=300,
+    "Track list",
+    height=260,
     placeholder=(
-        "MellSher — X\n"
-        "Kai Angel - Limousine Music\n"
-        "GUF, Баста — Баста / Гуф\n"
-        "ssshhhiiittt! мысль\n"
-        "..."
+        "Miles Davis - So What\n"
+        "John Coltrane - Giant Steps\n"
+        "Dave Brubeck - Take Five\n"
+        "Herbie Hancock - Cantaloupe Island"
     ),
 )
 
-if st.button("🔍 Распознать треки", disabled=not playlist_text.strip()):
-    with st.spinner("Анализирую через Gemini AI…"):
-        try:
-            _parser = SpotifyImporter()
-            st.session_state["tracks"] = _parser.parse_with_ai(playlist_text)
-        except Exception as e:
-            st.error(f"Ошибка распознавания: {e}")
-            st.session_state.pop("tracks", None)
-
-tracks = st.session_state.get("tracks", [])
-
-if tracks:
-    with st.expander(f"Найдено треков: {len(tracks)}", expanded=True):
-        for i, t in enumerate(tracks, 1):
-            st.write(f"{i}. {t['artist']} — {t['song']}")
-elif "tracks" in st.session_state:
-    st.warning("AI не смог распознать треки. Проверь формат ввода.")
-
-# ── Mode selection ────────────────────────────────────────────────────────────
-
-st.divider()
 mode = st.radio(
-    "Действие:",
-    ["Создать новый плейлист", "Добавить в существующий"],
+    "Destination",
+    ["Create a new playlist", "Add to an existing playlist"],
     horizontal=True,
 )
 
 playlist_name = ""
-if mode == "Создать новый плейлист":
-    playlist_name = st.text_input("Название нового плейлиста:", value="Imported Playlist")
+existing_playlist_input = ""
 
-# ── Load existing playlists ───────────────────────────────────────────────────
+if mode == "Create a new playlist":
+    playlist_name = st.text_input("New playlist name", value="Jazz Imports")
+else:
+    existing_playlist_input = st.text_input(
+        "Existing playlist URL or ID",
+        placeholder="https://open.spotify.com/playlist/<id>",
+    )
 
-selected_playlist_id = None
-
-if mode == "Добавить в существующий":
-    if st.button("Загрузить мои плейлисты из Spotify"):
-        with st.spinner("Подключаюсь к Spotify…"):
-            try:
-                importer = SpotifyImporter()
-                importer.login()
-                playlists = importer.sp.current_user_playlists()["items"]
-                st.session_state["playlists"] = {p["name"]: p["id"] for p in playlists}
-                st.session_state["importer"] = importer
-            except Exception as e:
-                st.error(f"Ошибка подключения: {e}")
-
-    if "playlists" in st.session_state:
-        playlist_names = list(st.session_state["playlists"].keys())
-        chosen = st.selectbox("Выбери плейлист:", playlist_names)
-        selected_playlist_id = st.session_state["playlists"][chosen]
-
-# ── Import button ─────────────────────────────────────────────────────────────
-
-st.divider()
-
-ready = bool(tracks) and (
-    (mode == "Создать новый плейлист" and playlist_name.strip())
-    or (mode == "Добавить в существующий" and selected_playlist_id)
+existing_playlist_id = extract_playlist_id(existing_playlist_input)
+ready = bool(playlist_text.strip()) and (
+    (mode == "Create a new playlist" and bool(playlist_name.strip()))
+    or (mode == "Add to an existing playlist" and bool(existing_playlist_id))
 )
 
-if st.button("🚀 Импортировать в Spotify", type="primary", disabled=not ready):
+if st.button("Import to Spotify", type="primary", disabled=not ready):
     try:
-        if "importer" in st.session_state:
-            importer = st.session_state["importer"]
-        else:
-            importer = SpotifyImporter()
-            with st.spinner("Подключаюсь к Spotify… (первый раз откроется браузер для авторизации)"):
-                importer.login()
+        importer = SpotifyImporter()
 
-        if mode == "Создать новый плейлист":
-            with st.spinner("Создаю плейлист…"):
+        with st.spinner("Parsing tracks with AI..."):
+            tracks = importer.parse_with_ai(playlist_text)
+
+        if not tracks:
+            st.error("No tracks were parsed. Try cleaner input, one track per line.")
+            st.stop()
+
+        st.info(f"Parsed {len(tracks)} track(s).")
+
+        with st.spinner("Connecting to Spotify..."):
+            importer.login()
+
+        if mode == "Create a new playlist":
+            with st.spinner("Creating playlist..."):
                 playlist_id = importer.create_playlist(playlist_name.strip())
-            st.success(f"Плейлист «{playlist_name}» создан и открыт в браузере.")
+            st.success(f"Playlist created: {playlist_name.strip()}")
         else:
-            playlist_id = selected_playlist_id
+            playlist_id = existing_playlist_id
+            st.success("Using existing playlist.")
 
         found = []
         not_found = []
+        progress = st.progress(0)
 
-        with st.status("Ищу треки…", expanded=True) as status:
-            for t in tracks:
-                artist, song = t["artist"], t["song"]
-                results = importer.sp.search(q=f"{artist} {song}", type="track", limit=5)
-                items = results["tracks"]["items"]
+        for index, track in enumerate(tracks, start=1):
+            artist, song = track["artist"], track["song"]
+            results = importer.sp.search(q=f"{artist} {song}", type="track", limit=5)
+            items = results["tracks"]["items"]
 
-                if not items:
-                    st.write(f"✗ {artist} — {song}")
-                    not_found.append(t)
-                    continue
+            if not items:
+                st.write(f"[NOT FOUND] {artist} - {song}")
+                not_found.append(track)
+                progress.progress(index / len(tracks))
+                continue
 
-                match = importer.pick_best_match(artist, song, items)
-                if match is None:
-                    st.write(f"✗ {artist} — {song}")
-                    not_found.append(t)
-                    continue
+            best_match = importer.pick_best_match(artist, song, items)
+            if best_match is None:
+                st.write(f"[NOT FOUND] {artist} - {song}")
+                not_found.append(track)
+                progress.progress(index / len(tracks))
+                continue
 
-                importer.sp.playlist_add_items(playlist_id, [match["id"]])
-                matched_artist = match["artists"][0]["name"] if match.get("artists") else artist
-                matched_name = match.get("name", song)
-                st.write(f"✓ **{artist} — {song}** → {matched_artist} — {matched_name}")
-                found.append(t)
+            importer.sp.playlist_add_items(playlist_id, [best_match["id"]])
+            matched_artist = best_match["artists"][0]["name"] if best_match.get("artists") else artist
+            matched_name = best_match.get("name", song)
+            st.write(f"[ADDED] {artist} - {song} -> {matched_artist} - {matched_name}")
+            found.append(track)
+            progress.progress(index / len(tracks))
 
-            status.update(label=f"Готово: добавлено {len(found)} из {len(tracks)}", state="complete")
+        st.success(f"Done. Added {len(found)}/{len(tracks)} tracks.")
 
         if not_found:
-            st.warning(f"Не найдено ({len(not_found)}):")
-            for t in not_found:
-                st.write(f"- {t['artist']} — {t['song']}")
+            st.warning(f"Not found: {len(not_found)}")
+            for track in not_found:
+                st.write(f"- {track['artist']} - {track['song']}")
 
-    except Exception as e:
-        st.error(f"Ошибка: {e}")
+    except Exception as exc:
+        st.error(f"Error: {exc}")

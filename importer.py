@@ -30,7 +30,7 @@ class SpotifyImporter:
             auth_manager=spotipy.SpotifyOAuth(
                 client_id=os.getenv("SPOTIFY_CLIENT_ID"),
                 client_secret=os.getenv("SPOTIFY_CLIENT_SECRET"),
-                redirect_uri=os.getenv("SPOTIFY_REDIRECT_URI", "http://localhost:9999"),
+                redirect_uri=os.getenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:9999"),
                 scope="playlist-modify-private,playlist-read-private",
             )
         )
