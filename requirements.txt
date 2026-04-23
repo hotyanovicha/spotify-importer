@@ -1,3 +1,4 @@
 spotipy
 google-generativeai
 python-dotenv
+streamlit

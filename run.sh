@@ -8,4 +8,5 @@ if [ ! -d ".venv" ] || [ ! -f ".env" ]; then
     bash "$DIR/setup.sh"
 fi
 
-.venv/bin/python main.py
+echo "Opening Spotify Importer at http://localhost:8501"
+.venv/bin/streamlit run app.py --server.headless false
